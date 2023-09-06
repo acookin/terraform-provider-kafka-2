@@ -115,3 +115,5 @@ require (
 	google.golang.org/grpc v1.54.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 )
+
+replace github.com/segmentio/topicctl => github.com/acookin/topicctl v0.0.0-20230906185929-3d9692b976af

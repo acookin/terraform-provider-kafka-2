@@ -44,6 +44,7 @@ type SASLConfigModel struct {
 	Mechanism types.String `tfsdk:"mechanism"`
 	Username  types.String `tfsdk:"username"`
 	Password  types.String `tfsdk:"password"`
+	AWSRegion types.String `tfsdk:"aws_region"`
 }
 
 // TLSConfigModel describes a SASL Authentication configuration
@@ -101,6 +102,11 @@ func (p *kafkaProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp
 						Optional:            true,
 						Sensitive:           true,
 					},
+					"aws_region": schema.StringAttribute{
+						MarkdownDescription: "AWS region for SASL mechanism",
+						Optional:            true,
+						Sensitive:           true,
+					},
 				},
 			},
 			"timeout": schema.Int64Attribute{
@@ -144,6 +150,14 @@ func (p *kafkaProvider) Configure(ctx context.Context, req provider.ConfigureReq
 			"Unknown Kafka SASL password",
 			"The provider cannot create the Kafka client as there is an unknown configuration value for the SASL password. "+
 				fmt.Sprintf("Either target apply the source of the value first, set the value statically in the configuration, or use the %s_SASL_PASSWORD environment variable.", envVarPrefix),
+		)
+	}
+	if config.SASL.AWSRegion.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("sasl.aws_region"),
+			"Unknown Kafka SASL AWS Region",
+			"The provider cannot create the Kafka client as there is an unknown configuration value for the SASL aws region. "+
+				fmt.Sprintf("Either target apply the source of the value first, set the value statically in the configuration, or use the %s_SASL_AWS_REGION environment variable.", envVarPrefix),
 		)
 	}
 
@@ -235,6 +249,10 @@ func (p *kafkaProvider) generateSASLConfig(ctx context.Context, sasl SASLConfigM
 	if !sasl.Mechanism.IsNull() {
 		saslPassword = sasl.Password.ValueString()
 	}
+	saslAWSRegion := p.getEnv("SASL_AWS_REGION", "")
+	if !sasl.AWSRegion.IsNull() {
+		saslAWSRegion = sasl.AWSRegion.ValueString()
+	}
 
 	switch admin.SASLMechanism(saslMechanism) {
 	case admin.SASLMechanismScramSHA512:
@@ -250,9 +268,14 @@ func (p *kafkaProvider) generateSASLConfig(ctx context.Context, sasl SASLConfigM
 			Password:  saslPassword,
 		}, nil
 	case admin.SASLMechanismAWSMSKIAM:
+		awsConfig := &admin.AWSConfig{}
+		if saslAWSRegion != "" {
+			awsConfig.Region = &saslAWSRegion
+		}
 		return admin.SASLConfig{
 			Enabled:   true,
 			Mechanism: admin.SASLMechanismAWSMSKIAM,
+			AWSConfig: awsConfig,
 		}, nil
 	}
 	return admin.SASLConfig{}, fmt.Errorf("unable to detect SASL mechanism: %s", sasl.Mechanism.ValueString())
